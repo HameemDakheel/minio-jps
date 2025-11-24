@@ -3,159 +3,116 @@ version: 1.5
 id: minio
 name: MinIO Cluster
 homepage: https://github.com/jelastic-jps/minio
-baseUrl: https://raw.githubusercontent.com/HameemDakheel/minio-jps/master
+baseUrl: https://raw.githubusercontent.com/jelastic-jps/minio/master
 logo: images/minio-logo-70x70.png
 
-categories: [ apps/file-manager ]
+categories: [apps/file-manager]
 description:
-  text: |
-    MinIO is an object storage server, compatible with Amazon S3 cloud storage
-    service, best suited for storing unstructured data such as photos, videos, log
-    files and backups.
-  short: |
-    Automated clusterization for a reliable and cost-effective MinIO storage
-    to keep your unstructured data in a cloud.
+    text: |
+        MinIO is an object storage server, compatible with Amazon S3 cloud storage
+        service, best suited for storing unstructured data such as photos, videos, log
+        files and backups.
+    short: |
+        Automated clusterization for a reliable and cost-effective MinIO storage
+        to keep your unstructured data in a cloud.
 
 globals:
-  accessKey: ${fn.password}
-  secretKey: ${fn.password}
-  port: 80
-  consolePort: 4949
-  exportPath: /export
-  DEPLOY_HOOK: /root/deployLE.sh
-  UNDEPLOY_HOOK: /root/undeployLE.sh
-  DEPLOY_HOOK_JS: ${baseUrl}/scripts/deployHook.js
-  BUILD_SCRIPT: ${baseUrl}/scripts/build-cluster.js
+    accessKey: ${fn.password}
+    secretKey: ${fn.password}
+    port: 80
+    consolePort: 4949
+    exportPath: /export
+    DEPLOY_HOOK_JS: ${baseUrl}/scripts/deployHook.js
+    BUILD_SCRIPT: ${baseUrl}/scripts/build-cluster.js
 
 onBeforeInit: |
-  function compareVersions(a, b) {a = a.split('.'), b = b.split('.'); for (var i = 0, l = Math.max(a.length, b.length); i < l; i++) {x = parseInt(a[i], 10) || 0; y = parseInt(b[i], 10) || 0; if (x != y) return x > y ? 1:-1 }; return 0;}
-  var settings = jps.settings;
-  var fields = settings.fields;
-  version = jelastic.system.service.GetVersion().version.split('-').shift()
-  if (compareVersions(version, '8.3') == -1) {
-    settings.fields.push({type:'string', caption:'Image', hidden:true, name:'image', value:'jelastic/minio:RELEASE.2023-02-27T18-10-45Z'})
-  } else {
-    if ("${quota.environment.externalip.enabled}" == 0) { 
-      settings.fields = fields.filter(function(item) { return item.name != "le-addon" }); 
+    function compareVersions(a, b) {a = a.split('.'), b = b.split('.'); for (var i = 0, l = Math.max(a.length, b.length); i < l; i++) {x = parseInt(a[i], 10) || 0; y = parseInt(b[i], 10) || 0; if (x != y) return x > y ? 1:-1 }; return 0;}
+    var settings = jps.settings;
+    var fields = settings.fields;
+    version = jelastic.system.service.GetVersion().version.split('-').shift()
+    if (compareVersions(version, '8.3') == -1) {
+      settings.fields.push({type:'string', caption:'Image', hidden:true, name:'image', value:'jelastic/minio:RELEASE.2023-02-27T18-10-45Z'})
+    } else {
+
+      settings.fields.push({type:'string', caption:'Image', hidden:true, name:'image', value:'jelastic/minio:RELEASE.2024-08-29T01-40-52Z-almalinux-9'});
     }
-    settings.fields.push({type:'string', caption:'Image', hidden:true, name:'image', value:'jelastic/minio:RELEASE.2024-08-29T01-40-52Z-almalinux-9'});
-    settings.fields.push({type:'checkbox', caption:'Install Let\'s Encrypt Certificates and Custom Domains Addon. Public IP is required.', name:'le-addon', value:true});
-  }
-  return { result: 0, settings: settings };
+    return { result: 0, settings: settings };
 
 settings:
-  fields:
-    - name: nodes
-      caption: Number of nodes
-      type: list
-      inputType: string
-      values:
-        1: 1 node
-        4: 4 nodes
-        8: 8 nodes
-        16: 16 nodes
-      default: 4
-      required: true
-         
+    fields:
+        - name: nodes
+          caption: Number of nodes
+          type: list
+          inputType: string
+          values:
+              1: 1 node
+              4: 4 nodes
+              8: 8 nodes
+              16: 16 nodes
+          default: 4
+          required: true
+
 nodes:
-  count: ${settings.nodes}
-  cloudlets: 16
-  nodeGroup: cp
-  image: ${settings.image}
-  password: ${globals.secretKey}
-  skipNodeEmails: true
-  validation:
-      maxCount: ${settings.nodes}
-      minCount: ${settings.nodes}
+    count: ${settings.nodes}
+    cloudlets: 16
+    nodeGroup: cp
+    image: ${settings.image}
+    password: ${globals.secretKey}
+    skipNodeEmails: true
+    validation:
+        maxCount: ${settings.nodes}
+        minCount: ${settings.nodes}
 
 onBeforeChangeTopology:
-  - script: |-
-      var state = ${event.params.env}.sslstate;
-      return {result: 0, state: state}
-  - if (${response.state}): 
-     - stopEvent:
-       type: warning
-       message: Built-in SSL is not allowed for this environment.
+    - script: |-
+          var state = ${event.params.env}.sslstate;
+          return {result: 0, state: state}
 
 onAfterChangeTopology:
-  - if (${event.response.response.env.sslstate}):
-      cmd[cp]: nft insert rule ip nat PREROUTING ip saddr 0.0.0.0/0 ip daddr 0.0.0.0/0 tcp dport 80 counter redirect to 4949
-  - else:
-      cmd[cp]: |-
-        for REDIRECT_HANDLE in $(/usr/sbin/nft -a list table ip nat 2>&1 | grep 'redirect to 4949'| grep 'dport 80' | sed -r 's/.*#\s+handle\s+([0-9]+)/\1/g' 2>/dev/null); do
-            /usr/sbin/nft delete rule $ip_table nat PREROUTING handle $REDIRECT_HANDLE >>$JEM_CALLS_LOG 2>&1;
-        done
+    - if (${event.response.response.env.sslstate}):
+          cmd[cp]: nft insert rule ip nat PREROUTING ip saddr 0.0.0.0/0 ip daddr 0.0.0.0/0 tcp dport 80 counter redirect to 4949
+    - else:
+          cmd[cp]: |-
+              for REDIRECT_HANDLE in $(/usr/sbin/nft -a list table ip nat 2>&1 | grep 'redirect to 4949'| grep 'dport 80' | sed -r 's/.*#\s+handle\s+([0-9]+)/\1/g' 2>/dev/null); do
+                  /usr/sbin/nft delete rule $ip_table nat PREROUTING handle $REDIRECT_HANDLE >>$JEM_CALLS_LOG 2>&1;
+              done
 
 onBeforeResetNodePassword[cp]:
-  - setGlobals:
-      accessKey: ${fn.password}
-      secretKey: ${fn.password}     
-  - cmd[cp]: |-
-      jem passwd set -p ${globals.secretKey} -u ${globals.accessKey}
-      jem service restart
-    user: root
-  - api: 
-      method: message.email.Send
-      to: "${user.email}"
-      subject: "MinIO pasword was successfully reset for ${env.name}"
-      body: "<p><strong>MinIO password was successfully reset for your ${env.name} environment.</strong></p><p><strong>Username</strong>:&nbsp;${globals.accessKey}</p><p><strong>Password</strong>:&nbsp;${globals.secretKey}</p>"
+    - setGlobals:
+          accessKey: ${fn.password}
+          secretKey: ${fn.password}
+    - cmd[cp]: |-
+          jem passwd set -p ${globals.secretKey} -u ${globals.accessKey}
+          jem service restart
+      user: root
+    - api:
+          method: message.email.Send
+          to: "${user.email}"
+          subject: "MinIO pasword was successfully reset for ${env.name}"
+          body: "<p><strong>MinIO password was successfully reset for your ${env.name} environment.</strong></p><p><strong>Username</strong>:&nbsp;${globals.accessKey}</p><p><strong>Password</strong>:&nbsp;${globals.secretKey}</p>"
 
 onInstall:
-  - cmd[cp]: |-
-      jem passwd set -p ${globals.secretKey} -u ${globals.accessKey}
-      jem service stop
-      rm -rf /${globals.exportPath}/.minio.sys
-    user: root
-  - cmd[cp]: |-
-      echo "MINIO_SERVER_URL=${env.protocol}://${env.domain}" >> /etc/default/minio
-      echo "MINIO_BROWSER_REDIRECT_URL=${env.protocol}://${env.domain}:4949" >> /etc/default/minio
-  - if (${settings.le-addon:false}): 
-      - install-LE:
-          skipEnvs: true
-  - else:
-      - build-cluster
-      - restartContainers [cp]
+    - cmd[cp]: |-
+          jem passwd set -p ${globals.secretKey} -u ${globals.accessKey}
+          jem service stop
+          rm -rf /${globals.exportPath}/.minio.sys
+      user: root
+    - cmd[cp]: |-
+          echo "MINIO_SERVER_URL=${env.protocol}://${env.domain}" >> /etc/default/minio
+    - if (false):
+    - else:
+          - build-cluster
+          - restartContainers [cp]
 
 actions:
-  build-cluster:
-    script: ${globals.BUILD_SCRIPT}
-    params:
-      nodeGroup: cp
-      volumePath: ${globals.exportPath}
-      port: ${globals.port}
-      consolePort: ${globals.consolePort}
-
-  install-LE:
-    - setGlobals:
-          PROTOCOL: https
-    - cmd[cp]: |-
-        mkdir -p /home/jelastic/.minio/certs/host/
-        printf '#!/bin/bash
-        chown -R minio-user:minio-user /home/jelastic/.minio/
-        sed -i "/MINIO_VOLUMES/s|http:|https:|g" /etc/default/minio
-        sed -i "/MINIO_SERVER_URL/s|http:|https:|g" /etc/default/minio
-        sed -i "/MINIO_BROWSER_REDIRECT_URL/s|http:|https:|g" /etc/default/minio
-        sed -i "s|MINIO_OPTS=.*|MINIO_OPTS=\\" --address :443 --console-address :4949 --certs-dir /home/jelastic/.minio/certs\\"|g" /etc/default/minio
-        ' > ${globals.DEPLOY_HOOK}
-        
-        printf '#!/bin/bash
-        sed -i "/MINIO_VOLUMES/s|https:|http:|g" /etc/default/minio
-        sed -i "/MINIO_SERVER_URL/s|https:|http:|g" /etc/default/minio
-        sed -i "/MINIO_BROWSER_REDIRECT_URL/s|https:|http:|g" /etc/default/minio
-        sed -i "s|MINIO_OPTS=.*|MINIO_OPTS=\\" --address :80 --console-address :4949\\"|g" /etc/default/minio
-        ' > ${globals.UNDEPLOY_HOOK}
-    - install:
-      jps: https://raw.githubusercontent.com/jelastic-jps/lets-encrypt/master/manifest.jps?_r=${fn.random}
-      nodeGroup: cp
-      settings:
-        deployHook: ${globals.DEPLOY_HOOK_JS}
-        deployHookType: js
-        undeployHook: ${globals.DEPLOY_HOOK_JS}
-        undeployHookType: js
-        customDomains: ${env.domain}
-    - build-cluster
-    - restartContainers [cp]
+    build-cluster:
+        script: ${globals.BUILD_SCRIPT}
+        params:
+            nodeGroup: cp
+            volumePath: ${globals.exportPath}
+            port: ${globals.port}
+            consolePort: ${globals.consolePort}
 
 success:
-  text: /text/success.md
-  email: /text/success.md
+    text: /text/success.md
+    email: /text/success.md
